@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="2c37c133-f6a0-469a-afb5-7443fdc64457" >
+		<http:listener-connection host="localhost" port="8081" />
+	</http:listener-config>
+	<global-property doc:name="Global Property" doc:id="c68650ee-0e6d-4ca0-ac62-7256139dce45" name="env" value="dev" />
+	<flow name="baker_monitoring_salesforceFlow" doc:id="453bd453-5aa9-4877-a972-ae92ae6515f9" >
+		<http:listener doc:name="Listener" doc:id="086f6367-5284-43f4-a953-a96877f91420" config-ref="HTTP_Listener_config" path="/tesla"/>
+		<flow-ref doc:name="UtilityFlow" doc:id="6f73225d-1d66-42f8-8f42-375901ffeb58" name="Token_get_api_call"/>
+	</flow>
+</mule>
