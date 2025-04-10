@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:compression="http://www.mulesoft.org/schema/mule/compression" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/mule/compression/current/mule-compression.xsd">
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="a31188c6-6304-450d-9373-7a5183c136e1" basePath="/v2">
+		<http:request-connection protocol="HTTPS" host="gridlogic-api.sn.tesla.services" usePersistentConnections="false">
+			<tls:context >
+				<tls:trust-store insecure="true" path="cert/testnewkey.jks" password="testnewkey" type="jks"/>
+				<tls:key-store type="jks" path="cert/testnewkey.jks" keyPassword="testnewkey" password="testnewkey" />
+			</tls:context>
+		</http:request-connection>
+	</http:request-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="83a542f4-8d81-48d0-be59-10b8fd9c1b15" >
+		<salesforce:basic-connection username="${salesforce.username}" password="${secure::salesforce.password}" securityToken="${secure::salesforce.token}" url="${salesforce.url}"/>
+	</salesforce:sfdc-config>
+	<flow name="Token_get_api_call" doc:id="2099dfdb-6c9f-4053-a9ef-c592ab672307" >
+		<scheduler doc:name="Scheduler" doc:id="b8e9dbca-a05b-4a85-9f80-5264ba101db5" >
+			<scheduling-strategy >
+				<cron expression="0 0 7 * * ?" timeZone="America/Los_Angeles"/>
+			</scheduling-strategy>
+		</scheduler>
+		<http:request method="POST" doc:name="Get Token" doc:id="9a440827-1e67-45a5-82d9-ae5be0fabb95" config-ref="HTTP_Request_configuration" path="/asset/tokens">
+			<http:body ><![CDATA[#[{
+           "user_id": "sturner@bakerhomeenergy.com",
+           "instance_id": "bd4ea6bc-fd1d-4f82-993d-234ff64543eb"
+}]]]></http:body>
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/json"
+}]]]></http:headers>
+		</http:request>
+		<flow-ref doc:name="GetPowerhubSites" doc:id="a4bb1b55-cb64-436a-855d-cb81003d1ff1" name="GetPowerhubSites"/>
+	</flow>
+	<flow name="SalesforceQueryflow" doc:id="9e3a8904-6eec-4ac2-a53a-79f0cc2d179d" >
+		<logger level="INFO" doc:name="Logger" doc:id="7e652791-9efb-43d7-9dff-22745effbf74" message='#["Salesforce connection block"]'/>
+		<until-successful maxRetries="5" doc:name="Until Successful" doc:id="9afb9f2b-1085-4764-a385-5cbf2df6a74a" >
+			<salesforce:query doc:name="Query" doc:id="6009f075-5fb1-400d-a21e-e6f2c479964f" config-ref="Salesforce_Config">
+			<salesforce:salesforce-query><![CDATA[SELECT ID,Name,Site_ID__c,Monitoring_Platform__c From Site_Monitoring__c]]></salesforce:salesforce-query>
+		</salesforce:query>
+		</until-successful>
+		<ee:transform doc:name="Transform Message" doc:id="7e3361df-38e5-459d-b028-bdeea9e17944" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="siteid" ><![CDATA[%dw 2.0
+output application/java
+---
+payload
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="6fe6d0a8-bcb7-4308-a0e1-d70246c2d3c8" message="#[vars.siteid]"/>
+	</flow>
+	<flow name="GetPowerhubSites" doc:id="6ec55af0-2310-4426-8f92-50c257f83cb6" >
+		<logger level="INFO" doc:name="Logger" doc:id="32af2060-35fa-460c-a286-ed067351da3f" />
+		<ee:transform doc:name="Transform Message" doc:id="186e20ab-a9f8-42cb-957b-721ecbfb1ccc" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="token" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="SalesforceQueryflow" doc:id="4335ca7c-efe4-4bc2-8156-3255dfa76f9e" name="SalesforceQueryflow"/>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="022b03e7-d9e3-4abb-b4b0-1fe5561956a0" >
+			<route >
+				<foreach doc:name="For Each" doc:id="0f55cdf6-ca31-4912-8974-c049bc8970c7" collection="#[vars.siteid.Site_ID__c]">
+			<ee:transform doc:name="Transform Message" doc:id="f1865eec-0a4a-4f82-a3a3-32bd2763fd48" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="siteidsf1" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<ee:transform doc:name="Transform Message" doc:id="178d112f-e546-4125-a1ff-f9604de3351f" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="starttime" ><![CDATA[%dw 2.0
+output application/java
+var today = now() as DateTime
+var ninetyDaysAgo = today - |P35D|
+---
+ninetyDaysAgo as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}]]></ee:set-variable>
+							<ee:set-variable variableName="currenttime" ><![CDATA[%dw 2.0
+output application/java
+---
+(now() as DateTime >> "PST") as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<http:request method="GET" doc:name="Request for alerts" doc:id="fc274010-d9c0-48db-a555-0d205e09adba" config-ref="HTTP_Request_configuration" path="/alerts/history" outputMimeType="application/json">
+			<http:headers><![CDATA[#[{
+    "authorization": "Bearer " ++ vars.token.data.token
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "target_id": vars.siteidsf1,
+    "start_datetime": vars.starttime,
+    "end_datetime":  vars.currenttime
+}]]]></http:query-params>
+		</http:request>
+			<compression:decompress doc:name="Decompress" doc:id="f9ba65bb-11e9-4d92-9c24-b521976b6673" outputMimeType="application/json">
+			<compression:decompressor>
+				<compression:gzip-decompressor />
+			</compression:decompressor>
+		</compression:decompress>
+			<logger level="INFO" doc:name="Logger" doc:id="4b386928-005d-4ebc-9440-789793788c78" message="#[output application/json&#10;---&#10;payload]"/>
+					<ee:transform doc:name="Transform Message" doc:id="7d1fb90e-73dd-4ceb-9e1d-658c476dbe5e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var siteId = if (vars.siteid.Site_ID__c != null and vars.siteid.Site_ID__c is Array and sizeOf(vars.siteid.Site_ID__c) > 0) 
+               vars.siteid.Site_ID__c[0] 
+             else 
+               "Unknown_Site_ID"  // Fallback value
+var monitoringPlatform = "MuleSoft Monitoring"
+var lastSyncDate = now() as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+
+fun extractFix(description) =
+    if (description contains "Fix:") 
+        trim((description splitBy "Fix:")[1]) // Extract text after "Fix:"
+    else 
+        Null // Default value
+
+fun cleanDescription(description) =
+    description replace /Fix:.*$/ with "" // Remove everything after "Fix:"
+
+---
+payload.data map (alert) -> {
+    Alert_ID__c: alert.alert_id as String,
+    Alert_Name__c: alert.alert_name as String,
+    Description__c: trim(cleanDescription(alert.description)) as String, // Cleaned description
+    Troubleshooting_Steps__c: "Fix:" ++ extractFix(alert.description) as String, // Extracted Fix step
+    Severity__c: alert.severity as String,
+    Monitoring_Platform__c: "Tesla",
+    Last_Sync_Date__c: lastSyncDate as DateTime as Date {format: "MM/dd/yyyy"},
+    Status__c: alert.status as String,
+    Active__c: alert.is_active as Boolean,
+    Start_Date__c: alert.start_time as DateTime as Date {format: "MM/dd/yyyy"} default "",
+    End_Date__c: alert.end_time as DateTime as Date {format: "MM/dd/yyyy"} default "",
+    Site_ID__c: vars.siteidsf1 as String,
+    Support_Ticket_URL__c: alert.support_auto_ticket_url as String default "",
+    Site_Monitoring_Name__r:{
+    	Site_ID__c : vars.siteidsf1},
+    Case_Name__c: "" as String,
+    Account_Name__c: "" as String
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			<until-successful maxRetries="5" doc:name="Until Successful" doc:id="ff15253c-db00-430a-a713-5b98d90ab614">
+				<salesforce:upsert doc:name="Upsert" doc:id="ed61a9f1-33b3-4881-a38d-b5b01c376df7" config-ref="Salesforce_Config" objectType="Monitoring_Event__c" externalIdFieldName="Alert_ID__c" />
+			</until-successful>
+			<ee:transform doc:name="Transform Message" doc:id="0f288fa4-677d-4c5c-9828-0406edfe7b59">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+		</foreach>
+			</route>
+			<route >
+				<foreach doc:name="For Each" doc:id="75f8b1a8-f7f9-4324-bf50-7f5c19f40a93" collection="#[vars.siteid.Site_ID__c]">
+					<logger level="INFO" doc:name="Logger" doc:id="ad8be38a-835e-493c-960b-2d46dc83dc6d" message='#["site monitoring update"]'/>
+					<ee:transform doc:name="Transform Message" doc:id="c36386be-cfc6-4b29-9792-33748633228e" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="siteidsf" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<logger level="INFO" doc:name="Logger" doc:id="e1e18a62-8496-42a6-a797-f23d9faaa58c" message="#[vars.siteidsf]"/>
+					<try doc:name="Try" doc:id="3b1d60d1-7af9-4596-8fcc-a21e196c4af3" >
+						<http:request method="GET" doc:name="Request for siteinfo" doc:id="2206a1c2-bb03-45f0-829c-efdbfaa4c209" config-ref="HTTP_Request_configuration" path="/settings/site_info">
+						<http:headers><![CDATA[#[{
+    "authorization": "Bearer " ++ vars.token.data.token
+}]]]></http:headers>
+						<http:query-params><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "asset_site_id": vars.siteidsf // Extracts the first element from the array
+}]]]></http:query-params>
+					</http:request>
+						<logger level="INFO" doc:name="Logger" doc:id="a8aba94a-c019-4474-a926-26215394c2b8" />
+						<error-handler >
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="0d8463e8-31e7-463a-9680-f1e5e8c92bee" type="ANY">
+								<logger level="INFO" doc:name="Logger" doc:id="3a4200f0-02eb-4f05-b7c3-07dea8123c38" message='#["returned empty response"]'/>
+								<ee:transform doc:name="Transform Message" doc:id="c71155fb-f65b-4310-b8e9-587840636bc3" >
+									<ee:message >
+										<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+}]]></ee:set-payload>
+									</ee:message>
+								</ee:transform>
+							</on-error-continue>
+						</error-handler>
+					</try>
+					<logger level="INFO" doc:name="Logger" doc:id="1e471cdb-d1a2-47d0-b42a-4b484061a664" message="#[output application/json&#10;---&#10;payload]"/>
+					<ee:transform doc:name="Transform Message" doc:id="6e45cedb-5c23-448c-b6be-8e183a821e66" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<choice doc:name="Choice" doc:id="4fda8f93-7bc8-4c85-826f-2f261aa4e6e3" >
+						<when expression="#[(sizeOf(payload) &gt; 0)]">
+							<ee:transform doc:name="Transform Message" doc:id="72baaa3e-e907-47c8-9999-9273c63cb268">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+[{
+  Command_Real_Mode__c: payload.customer_settings.command_real_mode as String,
+  Backup_Reserve__c: payload.customer_settings.backup_reserve_percent,
+  Event_Backup_Reserve__c: payload.customer_settings.event_backup_reserve_percent,
+  Customer_Preferred_Export_Rule__c: payload.customer_settings.customer_preferred_export_rule,
+  Disallow_Charge_From_Grid__c: payload.customer_settings.disallow_charge_from_grid_with_solar_installed,
+  Off_Grid_Vehicle_Charging_Reserve__c: payload.customer_settings.off_grid_vehicle_charging_reserve_percent,
+  Storm_Watch_Enabled__c: payload.customer_settings.storm_watch_enabled,
+  Site_ID__c: vars.siteidsf
+}]
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+							<until-successful maxRetries="5" doc:name="Until Successful" doc:id="e495b06c-2591-431a-bac5-c9a07836f17b">
+					<salesforce:upsert objectType="Site_Monitoring__c" externalIdFieldName="Site_ID__c" doc:name="Upsert" doc:id="ed0c1796-9681-4558-af47-7934f470e56c" config-ref="Salesforce_Config" target="sfresp" />
+				</until-successful>
+						</when>
+					</choice>
+					<ee:transform doc:name="Transform Message" doc:id="1690113a-a751-414b-836a-883abf7cba64">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				</foreach>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="243e3599-4745-4fe6-baa9-ef3af43a649d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="ba672ef9-db61-4a5a-81f3-78ad9c37c8a4" message='#["process completed"]'/>
+	</flow>
+</mule>

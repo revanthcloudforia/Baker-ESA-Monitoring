@@ -1,0 +1,17 @@
+salesforce:
+  userName: "![tNQA//pSLVUVv2Jgvs+nEA==]"
+  password: "![Test@1234]"
+  securityToken : "![ahdksdjsok]"
+  url : "![https://test.salesforce.com/services/Soap/u/55.0]"
+
+Dayforce:
+  userName: "![tNQA//pSLVUVv2Jgvs+nEA==]"
+  password: "![Test@1234]"
+  securityToken : "![ahdksdjsok]"
+  url : "![https://test.salesforce.com/services/Soap/u/55.0]"
+
+ServiceNow:
+  userName: "![tNQA//pSLVUVv2Jgvs+nEA==]"
+  password: "![Test@1234]"
+  securityToken : "![ahdksdjsok]"
+  url : "![https://test.salesforce.com/services/Soap/u/55.0]"
