@@ -1,4 +1,6 @@
 salesforce:
-  url : "https://login.salesforce.com/services/oauth2/token"
+  url : "https://login.salesforce.com/services/Soap/u/60"
+  username: "mulesoft@baker-electric.com.bheproduction"
   authorization_url: "https://login.salesforce.com/services/oauth2/authorize"
   access_token_url: "https://login.salesforce.com/services/oauth2/token"
+
