@@ -1,5 +1,5 @@
 salesforce:
-  url : "https://test.salesforce.com/services/oauth2/token"
-  authorization_url: "https://test.salesforce.com/services/oauth2/authorize"
-  access_token_url: "https://test.salesforce.com/services/oauth2/token"
-  
+  url : "https://test.salesforce.com/services/Soap/u/60"
+  username : "mulesoft@baker-electric.com.bhefullbox"
+  authorization_url : "https://test.salesforce.com/services/oauth2/authorize"
+  access_token_url : "https://test.salesforce.com/services/oauth2/token"
