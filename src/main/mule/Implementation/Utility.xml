@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:compression="http://www.mulesoft.org/schema/mule/compression" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
-	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-	xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:compression="http://www.mulesoft.org/schema/mule/compression"
+	xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
 http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
 http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
-http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/mule/compression/current/mule-compression.xsd">
+http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/mule/compression/current/mule-compression.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
 	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="a31188c6-6304-450d-9373-7a5183c136e1" basePath="/v2">
 		<http:request-connection protocol="HTTPS" host="gridlogic-api.sn.tesla.services" usePersistentConnections="false">
 			<tls:context >
@@ -22,21 +23,30 @@ http://www.mulesoft.org/schema/mule/compression http://www.mulesoft.org/schema/m
 	<flow name="Token_get_api_call" doc:id="2099dfdb-6c9f-4053-a9ef-c592ab672307" >
 		<scheduler doc:name="Scheduler" doc:id="b8e9dbca-a05b-4a85-9f80-5264ba101db5" >
 			<scheduling-strategy >
-				<cron expression="0 0 7 * * ?" timeZone="America/Los_Angeles"/>
+				<fixed-frequency frequency="5" timeUnit="MINUTES"/>
 			</scheduling-strategy>
 		</scheduler>
-		<http:request method="POST" doc:name="Get Token" doc:id="9a440827-1e67-45a5-82d9-ae5be0fabb95" config-ref="HTTP_Request_configuration" path="/asset/tokens">
-			<http:body ><![CDATA[#[{
+		<until-successful maxRetries="5" doc:name="Until Successful" doc:id="8af95baf-2a2e-49d2-956c-7502dbc38252" >
+			<http:request method="POST" doc:name="Get Token" doc:id="9a440827-1e67-45a5-82d9-ae5be0fabb95" config-ref="HTTP_Request_configuration" path="/asset/tokens" target="gettoken">
+			<http:body><![CDATA[#[{
            "user_id": "sturner@bakerhomeenergy.com",
            "instance_id": "bd4ea6bc-fd1d-4f82-993d-234ff64543eb"
 }]]]></http:body>
-			<http:headers ><![CDATA[#[output application/java
+			<http:headers><![CDATA[#[output application/java
 ---
 {
 	"Content-Type" : "application/json"
 }]]]></http:headers>
 		</http:request>
-		<flow-ref doc:name="GetPowerhubSites" doc:id="a4bb1b55-cb64-436a-855d-cb81003d1ff1" name="GetPowerhubSites"/>
+		</until-successful>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="e143d5aa-3ccb-441e-81fb-1d490025466f" >
+			<route >
+				<flow-ref doc:name="telemetry" doc:id="b2f5a624-d87e-4c78-a1d9-5bcf3aba96d7" name="telemetry" />
+			</route>
+			<route >
+				<flow-ref doc:name="GetPowerhubSites" doc:id="a4bb1b55-cb64-436a-855d-cb81003d1ff1" name="GetPowerhubSites" />
+			</route>
+		</scatter-gather>
 	</flow>
 	<flow name="SalesforceQueryflow" doc:id="9e3a8904-6eec-4ac2-a53a-79f0cc2d179d" >
 		<logger level="INFO" doc:name="Logger" doc:id="7e652791-9efb-43d7-9dff-22745effbf74" message='#["Salesforce connection block"]'/>
@@ -60,6 +70,14 @@ payload
 	</flow>
 	<flow name="GetPowerhubSites" doc:id="6ec55af0-2310-4426-8f92-50c257f83cb6" >
 		<logger level="INFO" doc:name="Logger" doc:id="32af2060-35fa-460c-a286-ed067351da3f" />
+		<ee:transform doc:name="Transform Message" doc:id="0aef548c-cae6-4e31-940a-f123dc955a06" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.gettoken]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
 		<ee:transform doc:name="Transform Message" doc:id="186e20ab-a9f8-42cb-957b-721ecbfb1ccc" >
 			<ee:message >
 			</ee:message>
@@ -274,5 +292,135 @@ output application/java
 			</ee:message>
 		</ee:transform>
 		<logger level="INFO" doc:name="Logger" doc:id="ba672ef9-db61-4a5a-81f3-78ad9c37c8a4" message='#["process completed"]'/>
+	</flow>
+	<flow name="telemetry" doc:id="b64b405a-4957-4a9a-be11-c09c9ed6a8dc" >
+		<logger level="INFO" doc:name="Logger" doc:id="45199fc0-89f8-41f9-994f-ea15b9f1d880" />
+		<ee:transform doc:name="Transform Message" doc:id="aca80280-051f-4fba-b7d1-5ff0021574dc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[vars.gettoken]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message" doc:id="fcb7a6bf-6d05-4282-a94f-7974ef2a700a" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="token" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="SalesforceQueryflow" doc:id="8e2453e4-ce27-41b7-9312-e965d13f0bc5" name="SalesforceQueryflow"/>
+		<foreach doc:name="For Each" doc:id="d77f2b82-8981-43d2-9c6d-412e91358d9b" collection="#[vars.siteid.Site_ID__c]">
+				<ee:transform doc:name="Transform Message" doc:id="0a6d509d-817c-4d25-8e78-a3a2dab1c420">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="siteidsf1"><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<ee:transform doc:name="Transform Message1" doc:id="5d3644f0-9c7d-4a42-85a1-ddc05ef2f7eb">
+					<ee:message />
+					<ee:variables>
+						<ee:set-variable variableName="starttime"><![CDATA[%dw 2.0
+output application/java
+var today = (now() - |P1D|) as DateTime  >> "America/Los_Angeles"
+---
+today as String {format: "yyyy-MM-dd'T'00:00:00"} ++ "-07:00"
+]]></ee:set-variable>
+						<ee:set-variable variableName="currenttime"><![CDATA[%dw 2.0
+output application/java
+var yesterday = (now() - |P1D|) as DateTime >> "America/Los_Angeles"
+---
+yesterday as String {format: "yyyy-MM-dd'T'23:59:59XXX"}
+]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<try doc:name="Try" doc:id="fc3b7bca-11ac-42b9-bd57-2c15e3ba8436" >
+				<http:request method="GET" doc:name="Request for telemetry data" doc:id="08d7aa1f-8a15-4448-8401-e8676d96036e" config-ref="HTTP_Request_configuration" path="/telemetry/history" outputMimeType="application/json">
+					<http:headers><![CDATA[#[{
+    "authorization": "Bearer " ++ vars.token.data.token
+}]]]></http:headers>
+					<http:query-params><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "target_id": vars.siteidsf1,
+    "signals": "solar_energy_exported",
+    "start_datetime": vars.starttime,
+    "end_datetime":  vars.currenttime,
+    "period": "1d",
+    "rollup": "last",
+    "time_zone": "America/Los_Angeles"
+}]]]></http:query-params>
+				</http:request>
+				<compression:decompress doc:name="Decompress" doc:id="523f0c47-e357-4aa7-910b-3890a7418ec1" outputMimeType="application/json">
+					<compression:decompressor>
+						<compression:gzip-decompressor />
+					</compression:decompressor>
+				</compression:decompress>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="157caac8-5a83-4569-8c4e-23f1b8d53e09" >
+						<ee:transform doc:name="Transform Message" doc:id="c008c6ef-1295-4eb3-88b1-f9755647c8f1" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</on-error-continue>
+				</error-handler>
+			</try>
+				<choice doc:name="Choice" doc:id="bd59bc63-1a0c-4150-a3fa-a4aea81bd1d1">
+					<when expression="#[(sizeOf(payload) &gt; 0)]">
+						<logger level="INFO" doc:name="Logger" doc:id="14e76067-d134-498e-a673-a0e102fe0b7d" message="#[output application/json&#10;---&#10;payload]" />
+						<ee:transform doc:name="Transform Message" doc:id="19bf3be8-8977-44d0-9a2b-fd63f90af3b5">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<ee:transform doc:name="Transform data divide by 100" doc:id="730f6e36-1448-4719-b7a9-22ba0c8ebcf4">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var value = payload.data[0].data_points[0].value
+var siteId = payload.data[0].site_id
+---
+{
+  Lifetime_Production__c: value / 1000,
+  Site_ID__c: siteId
+}
+
+]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<ee:transform doc:name="Transform Message1" doc:id="b4093eb8-d9fd-488d-b006-05880ddf68f5">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+[payload] map (item) -> {
+  Lifetime_Production__c: item.Lifetime_Production__c,
+  Site_ID__c: item.Site_ID__c
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<choice doc:name="Choice" doc:id="b5774e61-c605-4bd8-8caf-95fb4090c428">
+							<when expression="#[(sizeOf(payload) &gt; 0)]">
+								<until-successful maxRetries="5" doc:name="Until Successful" doc:id="580c3b8f-9afb-4d99-9139-bddd06a58ebb">
+									<salesforce:upsert objectType="Site_Monitoring__c" externalIdFieldName="Site_ID__c" doc:name="Site_Monitoring__c update" doc:id="aa787abf-22a7-4f8a-8849-249db9b50527" config-ref="Salesforce_Config" />
+								</until-successful>
+							</when>
+						</choice>
+					</when>
+				</choice>
+			</foreach>
 	</flow>
 </mule>
